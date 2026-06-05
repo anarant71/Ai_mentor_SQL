@@ -17,6 +17,16 @@ api.interceptors.response.use(
       return Promise.reject(error);
     }
 
+    // /auth/me is expected to 401 for unauthenticated users — skip redirect
+    if (error.config?.url === '/auth/me') {
+      return Promise.reject(error);
+    }
+
+    // Avoid redirect loop if we're already on /login
+    if (window.location.pathname === '/login') {
+      return Promise.reject(error);
+    }
+
     if (isRefreshing) {
       return Promise.reject(error);
     }
