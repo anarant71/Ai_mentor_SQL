@@ -73,10 +73,11 @@ export default function Login() {
         await login(email, password);
       }
     } catch (err: unknown) {
-      const msg =
-        err && typeof err === 'object' && 'response' in err
-          ? (err as { response: { data: { detail?: string } } }).response?.data?.detail || 'Something went wrong'
-          : 'Something went wrong';
+      let msg = 'Something went wrong';
+      if (err && typeof err === 'object' && 'response' in err) {
+        const data = (err as { response: { data: { error?: { message?: string }; detail?: string | { message?: string } } } }).response?.data;
+        msg = data?.error?.message || (typeof data?.detail === 'string' ? data.detail : (data?.detail as { message?: string })?.message) || msg;
+      }
       setError(msg);
     } finally {
       setSubmitting(false);

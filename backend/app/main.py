@@ -24,11 +24,16 @@ from app.database import (
     init_databases,
 )
 from app.limiter import limiter
+from app.models.base import Base
+from app.database import platform_engine
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     await init_databases()
+    # Auto-create any tables missing from migrations (e.g. roadmaps)
+    async with platform_engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
     yield
     await close_databases()
 
