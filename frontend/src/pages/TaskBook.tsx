@@ -1,5 +1,6 @@
-import { useEffect, useState, useCallback, useRef } from 'react';
+import { useState, useCallback, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
+import { useQuery } from '@tanstack/react-query';
 import Editor, { type OnMount } from '@monaco-editor/react';
 import api from '../api/client';
 import type { TaskWithSkills, StudentSkill, ExecuteResult } from '../types';
@@ -56,29 +57,28 @@ export default function TaskBook() {
   const [searchParams, setSearchParams] = useSearchParams();
   const skillFilter = searchParams.get('skill') || '';
 
-  const [allSkills, setAllSkills] = useState<StudentSkill[]>([]);
-  const [tasks, setTasks] = useState<TaskWithSkills[]>([]);
   const [activeTask, setActiveTask] = useState<TaskWithSkills | null>(null);
   const [query, setQuery] = useState('');
   const [execResult, setExecResult] = useState<ExecuteResult | null>(null);
   const [executing, setExecuting] = useState(false);
-  const [loading, setLoading] = useState(true);
+
+  const { data: allSkills = [], isLoading } = useQuery({
+    queryKey: ['skills-student'],
+    queryFn: () => api.get<StudentSkill[]>('/skills/student').then((r) => r.data),
+  });
+
+  const { data: tasks = [] } = useQuery({
+    queryKey: ['tasks', skillFilter],
+    queryFn: () => {
+      const url = `/tasks${skillFilter ? `?skill=${skillFilter}` : ''}`;
+      return api.get<TaskWithSkills[]>(url).then((r) => {
+        if (r.data.length > 0) setActiveTask((prev) => prev || r.data[0]);
+        return r.data;
+      });
+    },
+  });
 
   const editorRef = useRef<Parameters<OnMount>[0] | null>(null);
-
-  useEffect(() => {
-    Promise.all([
-      api.get<StudentSkill[]>('/skills/student'),
-      api.get<TaskWithSkills[]>(`/tasks${skillFilter ? `?skill=${skillFilter}` : ''}`),
-    ])
-      .then(([skillsRes, tasksRes]) => {
-        setAllSkills(skillsRes.data);
-        setTasks(tasksRes.data);
-        if (tasksRes.data.length > 0) setActiveTask(tasksRes.data[0]);
-      })
-      .catch(() => {})
-      .finally(() => setLoading(false));
-  }, [skillFilter]);
 
   const handleExecute = useCallback(async () => {
     if (!query.trim()) return;
@@ -103,7 +103,7 @@ export default function TaskBook() {
     editor.addCommand(2048 | 3, () => executeRef.current());
   };
 
-  if (loading) {
+  if (isLoading) {
     return <div className="flex justify-center py-20"><div className="h-8 w-8 animate-spin rounded-full border-4 border-indigo-600 border-t-transparent" /></div>;
   }
 

@@ -1,10 +1,11 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { useParams, Link } from 'react-router-dom';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import Editor, { type OnMount } from '@monaco-editor/react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import api from '../api/client';
-import type { Task, TaskDetail, ExecuteResult, SubmitResult, Lesson, SubmitResultEnhanced } from '../types';
+import type { Task, TaskDetail, ExecuteResult, Lesson, SubmitResultEnhanced } from '../types';
 
 function StageSeparator({ label }: { label: string }) {
   return (
@@ -112,43 +113,42 @@ function SqlResultTable({ result }: { result: ExecuteResult }) {
 
 export default function LessonPage() {
   const { slug } = useParams<{ slug: string }>();
-  const [lesson, setLesson] = useState<{
-    title: string; summary: string; slug: string;
-    module_number: number; lesson_number: number;
-    module_title: string; difficulty: number; estimated_minutes: number;
-  } | null>(null);
-  const [content, setContent] = useState('');
-  const [tasks, setTasks] = useState<Task[]>([]);
-  const [allLessons, setAllLessons] = useState<Lesson[]>([]);
+  const queryClient = useQueryClient();
   const [activeTask, setActiveTask] = useState<TaskDetail | null>(null);
   const [query, setQuery] = useState('');
   const [execResult, setExecResult] = useState<ExecuteResult | null>(null);
   const [submitResult, setSubmitResult] = useState<SubmitResultEnhanced | null>(null);
   const [executing, setExecuting] = useState(false);
-  const [submitting, setSubmitting] = useState(false);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
   const [completed, setCompleted] = useState(false);
   const executeRef = useRef<() => void>(() => {});
 
-  useEffect(() => {
-    if (!slug) return;
-    Promise.all([
-      api.get<{ slug: string; title: string; module_number: number; lesson_number: number; module_title: string; summary: string; difficulty: number; estimated_minutes: number; content: string }>(`/lessons/${slug}`),
-      api.get<Task[]>(`/lessons/${slug}/tasks`),
-      api.get<Lesson[]>('/lessons'),
-    ])
-      .then(([lessonRes, tasksRes, lessonsRes]) => {
-        setLesson(lessonRes.data);
-        setContent(lessonRes.data.content);
-        setTasks(tasksRes.data);
-        setAllLessons(lessonsRes.data);
-      })
-      .catch(() => setError('Failed to load lesson'))
-      .finally(() => setLoading(false));
+  const { data: lesson, isLoading, error: lessonError } = useQuery({
+    queryKey: ['lesson', slug],
+    queryFn: () => api.get<{
+      slug: string; title: string; module_number: number; lesson_number: number;
+      module_title: string; summary: string; difficulty: number; estimated_minutes: number; content: string;
+      roadmap_status: string | null;
+    }>(`/lessons/${slug}`).then((r) => r.data),
+    enabled: !!slug,
+  });
 
-    api.post(`/lessons/${slug}/progress?status=in_progress`).catch(() => {});
-  }, [slug]);
+  const { data: tasks = [] } = useQuery({
+    queryKey: ['lesson-tasks', slug],
+    queryFn: () => api.get<Task[]>(`/lessons/${slug}/tasks`).then((r) => r.data),
+    enabled: !!slug,
+  });
+
+  const { data: allLessons = [] } = useQuery({
+    queryKey: ['lessons'],
+    queryFn: () => api.get<Lesson[]>('/lessons').then((r) => r.data),
+  });
+
+  const content = lesson?.content ?? '';
+  const isLocked = lesson?.roadmap_status === 'locked';
+
+  const nextLesson = allLessons.length > 0 && lesson
+    ? allLessons[allLessons.findIndex((l) => l.slug === slug) + 1] ?? null
+    : null;
 
   // Auto-select first task
   useEffect(() => {
@@ -157,11 +157,14 @@ export default function LessonPage() {
     }
   }, [tasks, activeTask]);
 
-  const nextLesson = allLessons.length > 0 && lesson
-    ? allLessons[allLessons.findIndex((l) => l.slug === slug) + 1] ?? null
-    : null;
+  // Mark lesson as in_progress on first load (skip locked)
+  useEffect(() => {
+    if (slug && lesson && !isLocked) {
+      api.post(`/lessons/${slug}/progress?status=in_progress`).catch(() => {});
+    }
+  }, [slug, lesson, isLocked]);
 
-  const loadTaskDetail = useCallback(async (taskId: string) => {
+  async function loadTaskDetail(taskId: string) {
     try {
       const res = await api.get<TaskDetail>(`/tasks/${taskId}`);
       setActiveTask(res.data);
@@ -176,7 +179,7 @@ export default function LessonPage() {
         });
       }
     }
-  }, [tasks]);
+  }
 
   const handleExecute = useCallback(async () => {
     if (!query.trim()) return;
@@ -199,29 +202,25 @@ export default function LessonPage() {
 
   executeRef.current = handleExecute;
 
-  const handleSubmit = useCallback(async () => {
-    if (!activeTask || !query.trim()) return;
-    setSubmitting(true);
-    setSubmitResult(null);
-    try {
-      const res = await api.post<SubmitResult>(`/tasks/${activeTask.id}/submit`, {
-        sql_text: query,
-      });
+  const submitMutation = useMutation({
+    mutationFn: (sql_text: string) =>
+      api.post<SubmitResultEnhanced>(`/tasks/${activeTask?.id}/submit`, { sql_text }),
+    onSuccess: (res) => {
       setSubmitResult(res.data);
       if (res.data.is_correct) {
         setCompleted(true);
         api.post(`/lessons/${slug}/progress?status=completed`).catch(() => {});
+        queryClient.invalidateQueries({ queryKey: ['lessons'] });
       }
-    } catch (err: unknown) {
+    },
+    onError: (err: unknown) => {
       const data = (err as { response?: { data?: { error?: { message?: string } } } })?.response?.data?.error;
       setSubmitResult({
         submission_id: '', attempt_number: 0, is_correct: false,
         score: 0, feedback: data?.message || 'Check failed',
       });
-    } finally {
-      setSubmitting(false);
-    }
-  }, [activeTask, query, slug]);
+    },
+  });
 
   const handleEditorMount: OnMount = (editor) => {
     editor.addCommand(2048 | 3, () => {
@@ -229,7 +228,7 @@ export default function LessonPage() {
     });
   };
 
-  if (loading) {
+  if (isLoading) {
     return (
       <div className="flex justify-center py-20">
         <div className="h-8 w-8 animate-spin rounded-full border-4 border-indigo-600 border-t-transparent" />
@@ -237,13 +236,35 @@ export default function LessonPage() {
     );
   }
 
-  if (error || !lesson) {
+  if (lessonError || !lesson) {
     return (
       <div className="py-20 text-center">
-        <p className="text-red-600">{error || 'Lesson not found'}</p>
+        <p className="text-red-600">{lessonError?.message || 'Lesson not found'}</p>
         <Link to="/" className="mt-4 inline-block text-sm text-indigo-600 hover:underline">
           Back to lessons
         </Link>
+      </div>
+    );
+  }
+
+  if (isLocked) {
+    return (
+      <div className="flex h-[calc(100vh-5rem)] items-center justify-center">
+        <div className="max-w-md text-center">
+          <div className="mx-auto mb-6 flex h-20 w-20 items-center justify-center rounded-full bg-gray-100">
+            <svg className="h-10 w-10 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+            </svg>
+          </div>
+          <h1 className="mb-2 text-2xl font-bold text-gray-900">{lesson.title}</h1>
+          <p className="mb-6 text-gray-500">Этот урок заблокирован. Сначала завершите предыдущие уроки.</p>
+          <Link
+            to="/"
+            className="inline-block rounded-lg bg-indigo-600 px-6 py-2.5 text-sm font-medium text-white transition hover:bg-indigo-700"
+          >
+            К списку уроков
+          </Link>
+        </div>
       </div>
     );
   }
@@ -426,11 +447,11 @@ export default function LessonPage() {
             {executing ? 'Выполняется...' : 'Выполнить'}
           </button>
           <button
-            onClick={handleSubmit}
-            disabled={submitting || !activeTask || !query.trim()}
+            onClick={() => submitMutation.mutate(query)}
+            disabled={submitMutation.isPending || !activeTask || !query.trim()}
             className="flex-1 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-indigo-700 disabled:opacity-50"
           >
-            {submitting ? 'Проверка...' : 'Отправить'}
+            {submitMutation.isPending ? 'Проверка...' : 'Отправить'}
           </button>
         </div>
 

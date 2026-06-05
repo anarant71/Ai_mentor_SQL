@@ -1,18 +1,9 @@
 """Tests for the auth endpoints."""
 
-import pytest
-from fastapi.testclient import TestClient
-from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
-
-from app.main import app
-from app.models.user import User
-from app.services.auth import hash_password
-
-client = TestClient(app)
+from app.services.auth import ACCESS_COOKIE
 
 
-def test_register_user_success():
+def test_register_user_success(client):
     """Test successful user registration."""
     response = client.post(
         "/api/v1/auth/register",
@@ -24,12 +15,14 @@ def test_register_user_success():
     )
     assert response.status_code == 201
     data = response.json()
-    assert "access_token" in data
-    assert data["user"]["email"] == "test@example.com"
-    assert data["user"]["display_name"] == "Test User"
+    assert data["email"] == "test@example.com"
+    assert data["display_name"] == "Test User"
+    assert "id" in data
+    cookies = dict(response.cookies)
+    assert ACCESS_COOKIE in cookies
 
 
-def test_register_user_invalid_email():
+def test_register_user_invalid_email(client):
     """Test registration with invalid email."""
     response = client.post(
         "/api/v1/auth/register",
@@ -42,7 +35,7 @@ def test_register_user_invalid_email():
     assert response.status_code == 422
 
 
-def test_register_user_short_password():
+def test_register_user_short_password(client):
     """Test registration with short password."""
     response = client.post(
         "/api/v1/auth/register",
@@ -55,7 +48,7 @@ def test_register_user_short_password():
     assert response.status_code == 422
 
 
-def test_register_user_missing_name():
+def test_register_user_missing_name(client):
     """Test registration with missing name."""
     response = client.post(
         "/api/v1/auth/register",
@@ -68,9 +61,8 @@ def test_register_user_missing_name():
     assert response.status_code == 422
 
 
-def test_register_duplicate_email():
+def test_register_duplicate_email(client):
     """Test registration with duplicate email."""
-    # First registration
     client.post(
         "/api/v1/auth/register",
         json={
@@ -79,8 +71,6 @@ def test_register_duplicate_email():
             "display_name": "Test User"
         }
     )
-    
-    # Second registration with same email should fail
     response = client.post(
         "/api/v1/auth/register",
         json={
@@ -92,9 +82,8 @@ def test_register_duplicate_email():
     assert response.status_code == 409
 
 
-def test_login_success():
+def test_login_success(client):
     """Test successful login."""
-    # Register a user first
     client.post(
         "/api/v1/auth/register",
         json={
@@ -103,8 +92,6 @@ def test_login_success():
             "display_name": "Login User"
         }
     )
-    
-    # Login
     response = client.post(
         "/api/v1/auth/login",
         json={
@@ -114,11 +101,13 @@ def test_login_success():
     )
     assert response.status_code == 200
     data = response.json()
-    assert "access_token" in data
-    assert data["user"]["email"] == "login@example.com"
+    assert data["email"] == "login@example.com"
+    assert data["display_name"] == "Login User"
+    cookies = dict(response.cookies)
+    assert ACCESS_COOKIE in cookies
 
 
-def test_login_invalid_credentials():
+def test_login_invalid_credentials(client):
     """Test login with invalid credentials."""
     response = client.post(
         "/api/v1/auth/login",
@@ -130,9 +119,8 @@ def test_login_invalid_credentials():
     assert response.status_code == 401
 
 
-def test_get_current_user():
-    """Test getting current user info."""
-    # Register and login to get a token
+def test_get_current_user(client):
+    """Test getting current user info via cookie."""
     register_response = client.post(
         "/api/v1/auth/register",
         json={
@@ -141,13 +129,9 @@ def test_get_current_user():
             "display_name": "Current User"
         }
     )
-    token = register_response.json()["access_token"]
-    
-    # Get user info
-    response = client.get(
-        "/api/v1/auth/me",
-        headers={"Authorization": f"Bearer {token}"}
-    )
+    assert register_response.status_code == 201
+
+    response = client.get("/api/v1/auth/me")
     assert response.status_code == 200
     data = response.json()
     assert data["email"] == "current@example.com"

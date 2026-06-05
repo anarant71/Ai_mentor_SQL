@@ -16,6 +16,7 @@ export interface Lesson {
   difficulty: number;
   estimated_minutes: number;
   status: 'not_started' | 'in_progress' | 'completed' | 'skipped';
+  roadmap_status?: 'locked' | 'available' | 'completed' | null;
 }
 
 export interface Task {
@@ -113,4 +114,29 @@ export interface TaskWithSkills {
 
 export interface SubmitResultEnhanced extends SubmitResult {
   skill_updates?: { code: string; score: number }[];
+}
+
+export interface StudentMistake {
+  id: string;
+  mistake_type_id: string;
+  mistake_code: string;
+  mistake_title: string;
+  skill_id: string | null;
+  title: string;
+  details: string | null;
+  severity: number;
+  repeat_count: number;
+  status: 'new' | 'active' | 'training' | 'resolved' | 'ignored';
+  first_seen_at: string;
+  last_seen_at: string;
+  resolved_at: string | null;
+}
+
+export interface MistakeType {
+  id: string;
+  code: string;
+  title: string;
+  description: string | null;
+  domain: string;
+  severity_default: number;
 }

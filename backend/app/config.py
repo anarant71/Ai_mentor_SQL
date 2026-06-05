@@ -28,9 +28,15 @@ class Settings(BaseSettings):
     SECRET_KEY: str = "change-me"
     JWT_ALGORITHM: str = "HS256"
     JWT_EXPIRE_HOURS: int = 24
+    JWT_ACCESS_EXPIRE_MINUTES: int = 15
+    JWT_REFRESH_EXPIRE_DAYS: int = 7
 
     # --- CORS ---
     CORS_ORIGINS: str = "http://localhost:5173,http://localhost:4173"
+
+    # --- Rate Limiting ---
+    AUTH_RATE_LIMIT: str = "10/minute"
+    GLOBAL_RATE_LIMIT: str = "100/minute"
 
     # --- Nvidia AI ---
     NVIDIA_API_KEY: str = ""

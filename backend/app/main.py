@@ -6,6 +6,9 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from slowapi import _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
+from slowapi.middleware import SlowAPIMiddleware
 
 from app.api.auth import router as auth_router
 from app.api.lessons import router as lessons_router
@@ -13,12 +16,14 @@ from app.api.tasks import router as tasks_router
 from app.api.sandbox import router as sandbox_router
 from app.api.skills import router as skills_router
 from app.api.mistakes import router as mistakes_router
+from app.config import settings
 from app.database import (
     check_platform_db,
     check_training_db,
     close_databases,
     init_databases,
 )
+from app.limiter import limiter
 
 
 @asynccontextmanager
@@ -36,6 +41,9 @@ app = FastAPI(
     docs_url="/docs",
     redoc_url="/redoc",
 )
+
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 
 @app.exception_handler(HTTPException)
@@ -68,6 +76,7 @@ app.add_middleware(
     allow_methods=['*'],
     allow_headers=['*'],
 )
+app.add_middleware(SlowAPIMiddleware)
 
 
 @app.get("/health", tags=["health"])

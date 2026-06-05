@@ -7,20 +7,28 @@ from uuid import UUID
 
 from sqlalchemy import and_, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from app.config import settings
 from app.models.lesson import Lesson
 from app.models.progress import LessonProgress
+from app.models.roadmap import Roadmap, RoadmapStep
 
 
 async def get_lessons_with_progress(
     user_id: UUID,
     session: AsyncSession,
 ) -> list[dict]:
-    """Вернуть все опубликованные уроки со статусом пользователя.
+    """
+    Вернуть все опубликованные уроки со статусом пользователя
+    и статусом roadmap (locked/available/completed).
 
     LEFT JOIN lesson_progress -> status или "not_started" если записи нет.
+    LEFT JOIN roadmap_steps -> roadmap_status или None если roadmap нет.
     """
+    # Достаём активный roadmap пользователя
+    roadmap = await _get_active_roadmap(user_id, session)
+
     query = (
         select(Lesson, LessonProgress.status)
         .outerjoin(
@@ -34,6 +42,14 @@ async def get_lessons_with_progress(
         .order_by(Lesson.module_number, Lesson.lesson_number)
     )
     result = await session.execute(query)
+
+    # Строим map lesson_id -> roadmap_status (если roadmap есть)
+    step_map: dict[UUID, str] = {}
+    if roadmap and roadmap.steps:
+        for step in roadmap.steps:
+            if step.lesson_id:
+                step_map[step.lesson_id] = step.status
+
     rows = []
     for lesson, progress_status in result:
         rows.append(
@@ -46,9 +62,43 @@ async def get_lessons_with_progress(
                 "difficulty": lesson.difficulty,
                 "estimated_minutes": lesson.estimated_minutes,
                 "status": progress_status or "not_started",
+                "roadmap_status": step_map.get(lesson.id),
             }
         )
     return rows
+
+
+async def _get_active_roadmap(
+    user_id: UUID,
+    session: AsyncSession,
+) -> Roadmap | None:
+    """Получить активный roadmap пользователя с шагами (загрузка одной выборкой)."""
+    result = await session.execute(
+        select(Roadmap)
+        .where(
+            Roadmap.student_id == user_id,
+            Roadmap.status == "active",
+        )
+        .options(selectinload(Roadmap.steps))
+        .order_by(Roadmap.created_at.desc())
+        .limit(1)
+    )
+    return result.scalar_one_or_none()
+
+
+async def get_lesson_roadmap_status(
+    user_id: UUID,
+    lesson_id: UUID,
+    session: AsyncSession,
+) -> str | None:
+    """Вернуть roadmap_status для конкретного урока."""
+    roadmap = await _get_active_roadmap(user_id, session)
+    if roadmap is None:
+        return None
+    for step in roadmap.steps:
+        if step.lesson_id == lesson_id:
+            return step.status
+    return None
 
 
 async def get_lesson_by_slug(
@@ -93,7 +143,14 @@ async def upsert_progress(
 
     При первом завершении проставляет started_at / completed_at.
     Повторный вызов не создаёт дубликат.
+    Не даёт завершить locked-урок.
     """
+    # Проверяем roadmap — нельзя завершить locked-урок
+    if new_status == "completed":
+        rstatus = await get_lesson_roadmap_status(user_id, lesson_id, session)
+        if rstatus == "locked":
+            raise PermissionError("Lesson is locked — complete previous lessons first")
+
     query = select(LessonProgress).where(
         LessonProgress.student_id == user_id,
         LessonProgress.lesson_id == lesson_id,
@@ -104,7 +161,7 @@ async def upsert_progress(
     now = datetime.now(timezone.utc)
 
     if progress is not None:
-        # Bugfix: РЅРµ РїРѕРЅРёР¶Р°С‚СЊ completed -> in_progress
+        # Bugfix: не понижать completed -> in_progress
         if progress.status == "completed" and new_status == "in_progress":
             return progress
 

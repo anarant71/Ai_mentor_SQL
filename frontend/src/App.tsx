@@ -1,3 +1,4 @@
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import { AuthProvider } from './context/AuthContext';
 import ProtectedRoute from './components/ProtectedRoute';
@@ -8,12 +9,24 @@ import LessonPage from './pages/Lesson';
 import Profile from './pages/Profile';
 import Skills from './pages/Skills';
 import TaskBook from './pages/TaskBook';
+import Mistakes from './pages/Mistakes';
+
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      staleTime: 30_000,
+      retry: 1,
+      refetchOnWindowFocus: false,
+    },
+  },
+});
 
 export default function App() {
   return (
-    <BrowserRouter>
-      <AuthProvider>
-        <Routes>
+    <QueryClientProvider client={queryClient}>
+      <BrowserRouter>
+        <AuthProvider>
+          <Routes>
           <Route path="/login" element={<Login />} />
           <Route
             path="/"
@@ -66,6 +79,16 @@ export default function App() {
             }
           />
           <Route
+            path="/mistakes"
+            element={
+              <ProtectedRoute>
+                <Layout>
+                  <Mistakes />
+                </Layout>
+              </ProtectedRoute>
+            }
+          />
+          <Route
             path="*"
             element={
               <ProtectedRoute>
@@ -78,5 +101,6 @@ export default function App() {
         </Routes>
       </AuthProvider>
     </BrowserRouter>
+    </QueryClientProvider>
   );
 }

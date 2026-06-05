@@ -14,8 +14,11 @@ def check(step, expected, actual):
         print(f"    Got: {actual[:200]}")
         FAIL += 1
 
+COOKIE_JAR = "/tmp/e2e_cookies.txt"
+
 def api(method, path, data=None, token=None):
-    cmd = ["curl", "-s", "-X", method, f"{BASE}{path}",
+    cmd = ["curl", "-s", "-c", COOKIE_JAR, "-b", COOKIE_JAR,
+           "-X", method, f"{BASE}{path}",
            "-H", "Content-Type: application/json"]
     if token:
         cmd.extend(["-H", f"Authorization: Bearer {token}"])
@@ -35,16 +38,14 @@ reg = api("POST", "/api/v1/auth/register", {
 })
 try:
     data = json.loads(reg)
-    token = data["access_token"]
-    check("Register", "access_token", reg)
+    check("Register", "display_name", reg)
 except:
     login = api("POST", "/api/v1/auth/login", {
         "email": "e2e_test@demo.com", "password": "test123456"
     })
     data = json.loads(login)
-    token = data["access_token"]
-    check("Login existing", "access_token", login)
-print(f"  Token: {token[:25]}...")
+    check("Login existing", "display_name", login)
+token = None  # Token is in HttpOnly cookie, not accessible from Python
 
 # 2. /me
 print("\n--- Step 2: GET /auth/me ---")

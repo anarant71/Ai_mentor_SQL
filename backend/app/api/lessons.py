@@ -14,10 +14,12 @@ from app.schemas.lesson import (
 )
 from app.services.lessons import (
     get_lesson_by_slug,
+    get_lesson_roadmap_status,
     get_lessons_with_progress,
     read_lesson_content,
     upsert_progress,
 )
+from app.services.roadmap import advance_roadmap_step
 
 router = APIRouter(prefix="/api/v1/lessons", tags=["lessons"])
 
@@ -38,7 +40,7 @@ async def get_lesson(
     current_user: User = Depends(require_active),
     session: AsyncSession = Depends(get_platform_session),
 ):
-    """Детали урока + Markdown-контент."""
+    """Детали урока + Markdown-контент + статус roadmap."""
     lesson = await get_lesson_by_slug(slug, session)
     if lesson is None:
         raise HTTPException(
@@ -60,6 +62,10 @@ async def get_lesson(
             },
         )
 
+    roadmap_status = await get_lesson_roadmap_status(
+        current_user.id, lesson.id, session
+    )
+
     return LessonDetail(
         slug=lesson.slug,
         title=lesson.title,
@@ -70,6 +76,7 @@ async def get_lesson(
         difficulty=lesson.difficulty,
         estimated_minutes=lesson.estimated_minutes,
         content=content,
+        roadmap_status=roadmap_status,
     )
 
 
@@ -84,7 +91,7 @@ async def update_progress(
     current_user: User = Depends(require_active),
     session: AsyncSession = Depends(get_platform_session),
 ):
-    """Update lesson progress (in_progress, completed)."""
+    """Update lesson progress + advance roadmap on completion."""
     lesson = await get_lesson_by_slug(slug, session)
     if lesson is None:
         raise HTTPException(
@@ -95,9 +102,23 @@ async def update_progress(
             },
         )
 
-    progress = await upsert_progress(
-        current_user.id, lesson.id, session, body.status
-    )
+    try:
+        progress = await upsert_progress(
+            current_user.id, lesson.id, session, body.status
+        )
+    except PermissionError as e:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail={
+                "code": "LESSON_LOCKED",
+                "message": str(e),
+            },
+        )
+
+    # Если урок завершён — продвигаем roadmap
+    if body.status == "completed":
+        await advance_roadmap_step(current_user.id, slug, session)
+
     return ProgressUpdateResponse(
         status=progress.status,
         message=f"Урок «{lesson.title}» отмечен как «{progress.status}»",

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import api from '../api/client';
 import type { StudentSkill } from '../types';
@@ -102,17 +102,12 @@ function SkillCard({ skill }: { skill: StudentSkill }) {
 }
 
 export default function Skills() {
-  const [skills, setSkills] = useState<StudentSkill[]>([]);
-  const [loading, setLoading] = useState(true);
+  const { data: skills = [], isLoading } = useQuery({
+    queryKey: ['skills-student'],
+    queryFn: () => api.get<StudentSkill[]>('/skills/student').then((r) => r.data),
+  });
 
-  useEffect(() => {
-    api.get<StudentSkill[]>('/skills/student')
-      .then((res) => setSkills(res.data))
-      .catch(() => {})
-      .finally(() => setLoading(false));
-  }, []);
-
-  if (loading) {
+  if (isLoading) {
     return (
       <div className="flex justify-center py-20">
         <div className="h-8 w-8 animate-spin rounded-full border-4 border-indigo-600 border-t-transparent" />

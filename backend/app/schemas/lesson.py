@@ -12,6 +12,7 @@ class LessonListItem(BaseModel):
     difficulty: int
     estimated_minutes: int
     status: str  # "not_started" | "in_progress" | "completed" | "skipped"
+    roadmap_status: str | None = None  # "locked" | "available" | "completed"
 
 
 class LessonDetail(BaseModel):
@@ -24,6 +25,7 @@ class LessonDetail(BaseModel):
     difficulty: int
     estimated_minutes: int
     content: str  # Markdown-текст
+    roadmap_status: str | None = None
 
 
 class ProgressUpdateResponse(BaseModel):

@@ -1,5 +1,6 @@
-import { useEffect, useState, useMemo } from 'react';
+import { useMemo } from 'react';
 import { Link } from 'react-router-dom';
+import { useQuery } from '@tanstack/react-query';
 import api from '../api/client';
 import type { Lesson, StudentSkill, SkillAnalysis } from '../types';
 
@@ -67,26 +68,19 @@ const LEVEL_COLORS: Record<string, string> = {
 };
 
 export default function Dashboard() {
-  const [lessons, setLessons] = useState<Lesson[]>([]);
-  const [skills, setSkills] = useState<StudentSkill[]>([]);
-  const [loading, setLoading] = useState(true);
+  const { data: lessons = [], isLoading: lessonsLoading } = useQuery({
+    queryKey: ['lessons'],
+    queryFn: () => api.get<Lesson[]>('/lessons').then((r) => r.data),
+  });
 
-  useEffect(() => {
-    Promise.all([
-      api.get<Lesson[]>('/lessons'),
-      api.get<StudentSkill[]>('/skills/student'),
-    ])
-      .then(([lessonsRes, skillsRes]) => {
-        setLessons(lessonsRes.data);
-        setSkills(skillsRes.data);
-      })
-      .catch(() => {})
-      .finally(() => setLoading(false));
-  }, []);
+  const { data: skills = [], isLoading: skillsLoading } = useQuery({
+    queryKey: ['skills-student'],
+    queryFn: () => api.get<StudentSkill[]>('/skills/student').then((r) => r.data),
+  });
 
   const analysis = useMemo(() => analyzeSkills(skills), [skills]);
 
-  if (loading) {
+  if (lessonsLoading || skillsLoading) {
     return (
       <div className="flex justify-center py-20">
         <div className="h-8 w-8 animate-spin rounded-full border-4 border-indigo-600 border-t-transparent" />
@@ -95,7 +89,9 @@ export default function Dashboard() {
   }
 
   const completedCount = lessons.filter((l) => l.status === 'completed').length;
-  const nextLesson = lessons.find((l) => l.status === 'not_started' || l.status === 'in_progress');
+  const nextLesson = lessons.find(
+    (l) => (l.status === 'not_started' || l.status === 'in_progress') && l.roadmap_status !== 'locked'
+  );
   const allCompleted = lessons.length > 0 && completedCount === lessons.length;
 
   return (
@@ -272,7 +268,46 @@ export default function Dashboard() {
       </div>
 
       <div className="space-y-3">
-        {lessons.map((lesson) => (
+        {lessons.map((lesson) => {
+          const isLocked = lesson.roadmap_status === 'locked';
+          return isLocked ? (
+          <div
+            key={lesson.slug}
+            className="flex cursor-not-allowed items-center gap-4 rounded-xl border border-gray-100 bg-white p-4 opacity-60 shadow-sm"
+          >
+            <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-sm font-bold ${
+              lesson.status === 'completed'
+                ? 'bg-green-100 text-green-700'
+                : isLocked
+                  ? 'bg-gray-100 text-gray-400'
+                  : 'bg-gray-100 text-gray-500'
+            }`}>
+              {lesson.status === 'completed' ? '✓' : isLocked ? '🔒' : lesson.lesson_number}
+            </div>
+            <div className="min-w-0 flex-1">
+              <h2 className="text-sm font-semibold text-gray-900">
+                {lesson.title}
+                {lesson.status === 'in_progress' && (
+                  <span className="ml-2 rounded-full bg-yellow-100 px-2 py-0.5 text-[10px] font-medium text-yellow-700">
+                    In progress
+                  </span>
+                )}
+              </h2>
+              <p className="mt-0.5 text-sm text-gray-500 truncate">{lesson.module_title}</p>
+            </div>
+            <span className={`shrink-0 rounded-full px-2.5 py-0.5 text-xs font-medium ${
+              lesson.status === 'completed'
+                ? 'bg-green-100 text-green-700'
+                : lesson.status === 'in_progress'
+                  ? 'bg-yellow-100 text-yellow-700'
+                  : isLocked
+                    ? 'bg-gray-100 text-gray-400'
+                    : 'bg-gray-100 text-gray-500'
+            }`}>
+              {lesson.status === 'completed' ? 'Completed' : lesson.status === 'in_progress' ? 'In progress' : isLocked ? 'Locked' : 'Not started'}
+            </span>
+          </div>
+          ) : (
           <Link
             key={lesson.slug}
             to={`/lessons/${lesson.slug}`}
@@ -306,7 +341,8 @@ export default function Dashboard() {
               {lesson.status === 'completed' ? 'Completed' : lesson.status === 'in_progress' ? 'In progress' : 'Not started'}
             </span>
           </Link>
-        ))}
+          );
+        })}
 
         {lessons.length === 0 && (
           <p className="py-10 text-center text-sm text-gray-400">No lessons available yet.</p>

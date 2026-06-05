@@ -2,27 +2,35 @@ import axios from 'axios';
 
 const api = axios.create({
   baseURL: '/api/v1',
+  withCredentials: true,
   headers: {
     'Content-Type': 'application/json',
   },
 });
 
-api.interceptors.request.use((config) => {
-  const token = localStorage.getItem('token');
-  if (token) {
-    config.headers.Authorization = `Bearer ${token}`;
-  }
-  return config;
-});
+let isRefreshing = false;
 
 api.interceptors.response.use(
   (response) => response,
-  (error) => {
-    if (error.response?.status === 401) {
-      localStorage.removeItem('token');
-      window.location.href = '/login';
+  async (error) => {
+    if (error.response?.status !== 401 || error.config?.url === '/auth/refresh') {
+      return Promise.reject(error);
     }
-    return Promise.reject(error);
+
+    if (isRefreshing) {
+      return Promise.reject(error);
+    }
+
+    isRefreshing = true;
+    try {
+      await api.post('/auth/refresh');
+      return api(error.config);
+    } catch {
+      window.location.href = '/login';
+      return Promise.reject(error);
+    } finally {
+      isRefreshing = false;
+    }
   },
 );
 

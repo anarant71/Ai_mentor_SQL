@@ -17,35 +17,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const token = localStorage.getItem('token');
-    if (!token) {
-      setLoading(false);
-      return;
-    }
     api.get<User>('/auth/me')
       .then((res) => setUser(res.data))
-      .catch(() => localStorage.removeItem('token'))
+      .catch(() => setUser(null))
       .finally(() => setLoading(false));
   }, []);
 
   const login = async (email: string, password: string) => {
-    const res = await api.post<{ access_token: string; token_type: string; user: User }>(
-      '/auth/login', { email, password },
-    );
-    localStorage.setItem('token', res.data.access_token);
-    setUser(res.data.user);
+    const res = await api.post<User>('/auth/login', { email, password });
+    setUser(res.data);
   };
 
   const register = async (name: string, email: string, password: string) => {
-    const res = await api.post<{ access_token: string; token_type: string; user: User }>(
-      '/auth/register', { display_name: name, email, password },
-    );
-    localStorage.setItem('token', res.data.access_token);
-    setUser(res.data.user);
+    const res = await api.post<User>('/auth/register', { display_name: name, email, password });
+    setUser(res.data);
   };
 
-  const logout = () => {
-    localStorage.removeItem('token');
+  const logout = async () => {
+    await api.post('/auth/logout').catch(() => {});
     setUser(null);
   };
 
