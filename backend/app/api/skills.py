@@ -1,6 +1,7 @@
 """Skills API: /api/v1/skills/* endpoints."""
 
 from fastapi import APIRouter, Depends
+from sqlalchemy import and_
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
