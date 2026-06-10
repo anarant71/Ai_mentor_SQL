@@ -52,6 +52,11 @@ Full refactor: HttpOnly cookies + rate limiting + React Query + sequential lesso
 - Auth tests converted to sync with `TestClient` fixture (was module-level `client`), 8/8 pass
 - PostgreSQL databases created in Docker (`mentor_app` user, `ai_mentor_platform` + `ai_mentor_training`)
 
+### Bugfixes
+- **[tables missing after create_all]** — `Base.metadata.create_all` creates empty tables without seed data; migrations (`alembic_version`) already marked as applied so INSERTs from migration 0002 never ran. Manual seed required: run `PYTHONPATH=. python3 -m seed_loader` (lessons/tasks) + seed skills via ORM (see below)
+- **[import missing in skills.py]** — `and_` not imported in `backend/app/api/skills.py:54`, causing 500 on `GET /skills/student`. Fix: added `from sqlalchemy import and_`
+- **[CORS port mismatch]** — frontend on port 5174 wasn't in CORS_ORIGINS (only 5173/4173). Fix: added 5174 to default in `config.py` + set `port: 5174` in `vite.config.ts`
+
 ## Key Files
 
 ### Backend
@@ -86,7 +91,8 @@ Full refactor: HttpOnly cookies + rate limiting + React Query + sequential lesso
 | `src/types/index.ts` | `Lesson` with `roadmap_status`, `StudentMistake`, `MistakeType`, `ChatMessage`, `ChatRequest`, `ChatResponse` |
 
 ## Known Issues / Dead Code
-- `SECRET_KEY = "change-me"` in `app/config.py` causes `sys.exit(1)` at startup if `.env` not set
+- `SECRET_KEY` in `.env` must not be `"change-me"` or `"change-me-to-a-random-secret-key"` or `sys.exit(1)` at startup
+- After `Base.metadata.create_all`, tables are empty — must seed: skills via ORM, lessons/tasks via `python3 -m seed_loader`
 - `TokenResponse` in `app/schemas/user.py` is unused (no imports)
 - `AuthResponse` type in `frontend/src/types/index.ts` is unused (removed from imports but type definition still exists)
 - `frontend/src/components/ProtectedRoute.tsx` checks auth only — no lesson-level access (delegated to backend + Lesson page)
