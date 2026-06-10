@@ -16,6 +16,7 @@ from app.api.tasks import router as tasks_router
 from app.api.sandbox import router as sandbox_router
 from app.api.skills import router as skills_router
 from app.api.mistakes import router as mistakes_router
+from app.api.mentor import router as mentor_router
 from app.config import settings
 from app.database import (
     check_platform_db,
@@ -72,6 +73,7 @@ app.include_router(tasks_router)
 app.include_router(sandbox_router)
 app.include_router(skills_router)
 app.include_router(mistakes_router)
+app.include_router(mentor_router)
 
 
 app.add_middleware(

@@ -10,6 +10,7 @@ import Profile from './pages/Profile';
 import Skills from './pages/Skills';
 import TaskBook from './pages/TaskBook';
 import Mistakes from './pages/Mistakes';
+import Mentor from './pages/Mentor';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -84,6 +85,16 @@ export default function App() {
               <ProtectedRoute>
                 <Layout>
                   <Mistakes />
+                </Layout>
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/mentor"
+            element={
+              <ProtectedRoute>
+                <Layout>
+                  <Mentor />
                 </Layout>
               </ProtectedRoute>
             }

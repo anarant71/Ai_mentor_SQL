@@ -1,7 +1,7 @@
 # AI Mentor — Session Handoff
 
 ## Summary
-Full refactor: HttpOnly cookies + rate limiting + React Query + sequential lesson roadmap + test infrastructure.
+Full refactor: HttpOnly cookies + rate limiting + React Query + sequential lesson roadmap + test infrastructure + GigaChat AI integration.
 
 ## Changes
 
@@ -38,6 +38,14 @@ Full refactor: HttpOnly cookies + rate limiting + React Query + sequential lesso
 
 ### New Pages
 - `/mistakes` — status filter pills, "Resolve all" button, `StudentMistake`/`MistakeType` types
+- `/mentor` — AI mentor chat page with GigaChat
+
+### GigaChat AI Integration
+- **Nvidia Nemotron replaced with GigaChat (Sberbank LLM)** for skill analysis after task submission
+- **`GigaChatClient` service** (`services/gigachat.py`): OAuth token management (30min expiry, auto-refresh), async `chat_completion()` method, configurable SSL verification
+- **`POST /api/v1/mentor/chat`** endpoint: stateless chat with AI mentor; frontend sends full message history; system prompt sets SQL tutor persona
+- **`.env` config**: `GIGACHAT_AUTH_KEY`, `GIGACHAT_SCOPE`, `GIGACHAT_API_BASE`, `GIGACHAT_AUTH_URL`, `GIGACHAT_MODEL`, `GIGACHAT_SSL_VERIFY`
+- **Frontend Mentor page**: Chat UI with message bubbles, loading animation, Enter-to-send, scroll-to-bottom
 
 ### Test Infrastructure
 - `conftest.py` rewritten: sync SQLAlchemy fixtures for DB cleanup (event-loop-agnostic); `Base.metadata.create_all` at session start; `DELETE FROM all tables` between tests
@@ -52,12 +60,15 @@ Full refactor: HttpOnly cookies + rate limiting + React Query + sequential lesso
 | `app/services/auth.py` | Cookie helpers (`set_access_cookie`, `set_refresh_cookie`, `clear_auth_cookies`), `_extract_token`, `_decode_token`, `create_access_token` (15min), `create_refresh_token` (7d) |
 | `app/api/auth.py` | Auth endpoints with `@limiter.limit`, roadmap creation on register |
 | `app/api/lessons.py` | Lesson endpoints with roadmap checks |
+| `app/api/mentor.py` | GigaChat mentor chat endpoint `POST /api/v1/mentor/chat` |
 | `app/services/lessons.py` | `get_lessons_with_progress` includes `roadmap_status`; `upsert_progress` blocks locked |
 | `app/services/roadmap.py` | `create_default_roadmap`, `advance_roadmap_step` |
+| `app/services/gigachat.py` | GigaChat OAuth client + chat completion |
+| `app/services/ai_skill_analyzer.py` | Skill analysis via GigaChat (was Nvidia) |
 | `app/schemas/lesson.py` | `LessonListItem`, `LessonDetail` with `roadmap_status` |
 | `app/limiter.py` | Shared `Limiter` instance |
-| `app/config.py` | Rate limit settings + JWT expiry config |
-| `app/main.py` | `SlowAPIMiddleware`, limiter state, `RateLimitExceeded` handler |
+| `app/config.py` | Rate limit settings + JWT expiry + GigaChat config |
+| `app/main.py` | `SlowAPIMiddleware`, limiter state, `RateLimitExceeded` handler, mentor router |
 | `tests/conftest.py` | Sync DB cleanup fixtures |
 | `tests/test_auth.py` | 8 auth tests |
 
@@ -66,11 +77,13 @@ Full refactor: HttpOnly cookies + rate limiting + React Query + sequential lesso
 |---|---|
 | `src/api/client.ts` | Axios with `withCredentials`, 401 interceptor with refresh |
 | `src/context/AuthContext.tsx` | No localStorage, `/auth/me` init, logout calls API |
-| `src/App.tsx` | `QueryClientProvider`, `/mistakes` route |
+| `src/App.tsx` | `QueryClientProvider`, `/mistakes` + `/mentor` routes |
+| `src/components/Layout.tsx` | Nav includes Mentor link |
 | `src/pages/Dashboard.tsx` | Locked lesson rendering (greyed + 🔒) |
 | `src/pages/Lesson.tsx` | Locked screen, React Query refactor |
 | `src/pages/Mistakes.tsx` | Status filters, resolve mutation |
-| `src/types/index.ts` | `Lesson` with `roadmap_status`, `StudentMistake`, `MistakeType` |
+| `src/pages/Mentor.tsx` | Chat UI with GigaChat API |
+| `src/types/index.ts` | `Lesson` with `roadmap_status`, `StudentMistake`, `MistakeType`, `ChatMessage`, `ChatRequest`, `ChatResponse` |
 
 ## Known Issues / Dead Code
 - `SECRET_KEY = "change-me"` in `app/config.py` causes `sys.exit(1)` at startup if `.env` not set
@@ -78,6 +91,8 @@ Full refactor: HttpOnly cookies + rate limiting + React Query + sequential lesso
 - `AuthResponse` type in `frontend/src/types/index.ts` is unused (removed from imports but type definition still exists)
 - `frontend/src/components/ProtectedRoute.tsx` checks auth only — no lesson-level access (delegated to backend + Lesson page)
 - The refresh interceptor in `api/client.ts` retries the original request once after a successful refresh; if refresh also fails (401), user is redirected to `/login`
+- GigaChat API requires SSL certificate from НУЦ Минцифры; currently using `verify=False` for dev (`GIGACHAT_SSL_VERIFY=false`)
+- GigaChat token auto-refresh: singleton `gigachat` client refreshes token transparently; but if server restarts, first request acquires new token (cold start delay)
 
 ## Running Tests
 ```bash

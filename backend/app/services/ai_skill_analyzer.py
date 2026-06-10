@@ -1,13 +1,9 @@
-"""AI Skill Analyzer — анализ навыков студента через Nvidia Nemotron API."""
+"""AI Skill Analyzer — анализ навыков студента через GigaChat API."""
 
 import json
 import logging
-from decimal import Decimal
-from typing import Optional
 
-import httpx
-
-from app.config import settings
+from app.services.gigachat import gigachat
 
 logger = logging.getLogger(__name__)
 
@@ -44,7 +40,7 @@ async def analyze_skills(
     lesson_title: str = "",
     task_title: str = "",
 ) -> dict:
-    """Анализирует навыки студента через Nvidia Nemotron API.
+    """Анализирует навыки студента через GigaChat API.
 
     Args:
         student_sql: SQL-запрос студента.
@@ -59,7 +55,7 @@ async def analyze_skills(
     Returns:
         {"skill_scores": [...], "feedback": str, "weak_areas": [...], "next_focus": str|None}
     """
-    if not settings.NVIDIA_API_KEY:
+    if not gigachat._auth_key:
         return _fallback_analysis(task_skills, is_correct)
 
     skills_text = "\n".join(
@@ -88,41 +84,30 @@ SQL студента:
 {skills_text}"""
 
     try:
-        async with httpx.AsyncClient(timeout=15.0) as client:
-            resp = await client.post(
-                f"{settings.NVIDIA_API_BASE}/chat/completions",
-                headers={
-                    "Authorization": f"Bearer {settings.NVIDIA_API_KEY}",
-                    "Content-Type": "application/json",
-                },
-                json={
-                    "model": settings.NVIDIA_MODEL,
-                    "messages": [
-                        {"role": "system", "content": ANALYSIS_SYSTEM_PROMPT},
-                        {"role": "user", "content": user_prompt},
-                    ],
-                    "temperature": 0.1,
-                    "max_tokens": 800,
-                },
-            )
-            resp.raise_for_status()
-            data = resp.json()
-            content = data["choices"][0]["message"]["content"]
+        data = await gigachat.chat_completion(
+            messages=[
+                {"role": "system", "content": ANALYSIS_SYSTEM_PROMPT},
+                {"role": "user", "content": user_prompt},
+            ],
+            temperature=0.1,
+            max_tokens=800,
+        )
+        content = data["choices"][0]["message"]["content"]
 
-            # Clean potential markdown fences
-            content = content.strip()
-            if content.startswith("```"):
-                content = content.split("\n", 1)[-1]
-            if content.endswith("```"):
-                content = content.rsplit("```", 1)[0]
-            content = content.strip()
+        # Clean potential markdown fences
+        content = content.strip()
+        if content.startswith("```"):
+            content = content.split("\n", 1)[-1]
+        if content.endswith("```"):
+            content = content.rsplit("```", 1)[0]
+        content = content.strip()
 
-            result = json.loads(content)
-            _validate_result(result, task_skills)
-            return result
+        result = json.loads(content)
+        _validate_result(result, task_skills)
+        return result
 
     except Exception as exc:
-        logger.warning(f"AI skill analysis failed: {exc}")
+        logger.warning(f"GigaChat skill analysis failed: {exc}")
         return _fallback_analysis(task_skills, is_correct)
 
 

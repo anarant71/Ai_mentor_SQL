@@ -63,7 +63,7 @@ class Task(Base, TimestampMixin):
 
     __table_args__ = (
         CheckConstraint(
-            "validation_strategy IN ('exact_match', 'sql_result', 'ai', 'manual')",
+            "validation_strategy IN ('exact_match', 'sql_result', 'not_empty', 'ai', 'manual')",
             name="validation_strategy_check",
         ),
         CheckConstraint(

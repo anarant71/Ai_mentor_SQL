@@ -38,10 +38,13 @@ class Settings(BaseSettings):
     AUTH_RATE_LIMIT: str = "10/minute"
     GLOBAL_RATE_LIMIT: str = "100/minute"
 
-    # --- Nvidia AI ---
-    NVIDIA_API_KEY: str = ""
-    NVIDIA_API_BASE: str = "https://integrate.api.nvidia.com/v1"
-    NVIDIA_MODEL: str = "nvidia/llama-3.1-nemotron-70b-instruct"
+    # --- GigaChat (Sberbank LLM) ---
+    GIGACHAT_AUTH_KEY: str = ""
+    GIGACHAT_SCOPE: str = "GIGACHAT_API_PERS"
+    GIGACHAT_API_BASE: str = "https://gigachat.devices.sberbank.ru/api/v1"
+    GIGACHAT_AUTH_URL: str = "https://ngw.devices.sberbank.ru:9443/api/v2/oauth"
+    GIGACHAT_MODEL: str = "GigaChat"
+    GIGACHAT_SSL_VERIFY: bool = False
 
 
 settings = Settings()
